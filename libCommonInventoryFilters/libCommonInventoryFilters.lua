@@ -1,4 +1,4 @@
-local myNAME, myVERSION = "libCommonInventoryFilters", 1.0
+local myNAME, myVERSION = "libCommonInventoryFilters", 1.1
 local libCIF = LibStub:NewLibrary(myNAME, myVERSION)
 if not libCIF then return end
 
