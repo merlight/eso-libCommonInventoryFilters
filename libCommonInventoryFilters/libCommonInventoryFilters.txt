@@ -4,9 +4,9 @@
 ; States and/or other countries. All rights reserved.
 
 ## Title: libCommonInventoryFilters
-## Author: Merlight
-## APIVersion: 100012
-## OptionalDependsOn: LibStub
+## Author: Merlight, sirinsidiator, Baertram
+## AddOnVersion: 130
+## Version: 1.3
+## APIVersion: 100026 100027
 
-LibStub/LibStub.lua
 libCommonInventoryFilters/libCommonInventoryFilters.lua
