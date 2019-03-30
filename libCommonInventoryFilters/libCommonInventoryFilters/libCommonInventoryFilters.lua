@@ -6,8 +6,11 @@ libCIF.name     = myNAME
 libCIF.version  = myVERSION
 
 local playerInvSearchBox
+local playerInvSearchBoxOld
 local craftbagSearchBox
+local craftbagSearchBoxOld
 local bankSearchBox
+local bankSearchBoxOld
 local guildBankSearchBox
 local guildBankSearchBoxOld
 local backPackDefaultLayout
@@ -139,13 +142,29 @@ local function showSearchBoxes()
     craftbagSearchBox:SetHidden(false)
 end
 
+local function enhanceSearchBoxes()
+    --Enable search clear with right click on search box
+    local function onMouseRightClickClearSearchBox(control, mouseButton, upInside)
+        if upInside and mouseButton == MOUSE_BUTTON_INDEX_RIGHT and control and control.GetText and control:GetText() ~= "" then
+            ZO_PlayerInventory_EndSearch(control)
+        end
+    end
+    ZO_PreHookHandler(playerInvSearchBoxOld,    "OnMouseUp", onMouseRightClickClearSearchBox)
+    ZO_PreHookHandler(craftbagSearchBoxOld,     "OnMouseUp", onMouseRightClickClearSearchBox)
+    ZO_PreHookHandler(bankSearchBoxOld,         "OnMouseUp", onMouseRightClickClearSearchBox)
+    ZO_PreHookHandler(guildBankSearchBoxOld,    "OnMouseUp", onMouseRightClickClearSearchBox)
+end
+
 local function onPlayerActivated(eventCode)
     EVENT_MANAGER:UnregisterForEvent(myNAME, eventCode)
 
     --Controls for the search box anchors
     playerInvSearchBox              = ZO_PlayerInventorySearch
+    playerInvSearchBoxOld           = ZO_PlayerInventorySearchBox
     craftbagSearchBox               = ZO_CraftBagSearch
+    craftbagSearchBoxOld            = ZO_CraftBagSearchBox
     bankSearchBox                   = ZO_PlayerBankSearch
+    bankSearchBoxOld                = ZO_PlayerBankSearchBox
     guildBankSearchBox              = ZO_GuildBankSearch
     guildBankSearchBoxOld           = ZO_GuildBankSearchBox
     --Backpack layout of fragments
@@ -161,6 +180,8 @@ local function onPlayerActivated(eventCode)
     backPackLaunderLayout           = BACKPACK_LAUNDER_LAYOUT_FRAGMENT
     --Fix the errors in the search boxes
     fixSearchBoxBugs()
+    --Enhance search boxes with right click
+    enhanceSearchBoxes()
     --Show the search boxes
     if not libCIF._searchBoxesDisabled then
         showSearchBoxes()
