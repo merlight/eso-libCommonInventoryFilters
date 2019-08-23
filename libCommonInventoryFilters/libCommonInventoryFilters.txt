@@ -4,9 +4,10 @@
 ; States and/or other countries. All rights reserved.
 
 ## Title: libCommonInventoryFilters
-## Author: Merlight, sirinsidiator, Baertram
-## AddOnVersion: 131
-## Version: 1.31
-## APIVersion: 100026 100027
+## Author: Merlight, sirinsidiator, Baertram, votan
+## AddOnVersion: 140
+## Version: 1.40
+## APIVersion: 100027 100028
+## IsLibrary: true
 
 libCommonInventoryFilters/libCommonInventoryFilters.lua

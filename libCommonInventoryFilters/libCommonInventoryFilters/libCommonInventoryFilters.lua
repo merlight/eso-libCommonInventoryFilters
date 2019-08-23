@@ -1,31 +1,15 @@
-local myNAME, myVERSION = "libCommonInventoryFilters", 1.30
+local myNAME, myVERSION = "libCommonInventoryFilters", 1.40
 LibCIF = LibCIF or {}
-if not LibCIF then return end
-local libCIF = LibCIF
-libCIF.name     = myNAME
-libCIF.version  = myVERSION
 
-local playerInvSearchBox
-local playerInvSearchBoxOld
-local craftbagSearchBox
-local craftbagSearchBoxOld
-local bankSearchBox
-local bankSearchBoxOld
-local guildBankSearchBox
-local guildBankSearchBoxOld
-local backPackDefaultLayout
-local backPackMenuBarLayout
-local backPackBankLayout
-local backPackGuildBankLayout
-local backPackTradingHouseLayout
-local backPackMailLayout
-local backPackPlayerTradeLayout
-local backPackStoreLayout
-local backPackFenceLayout
-local backPackLaunderLayout
+local libCIF = LibCIF
+libCIF.name = myNAME
+libCIF.version = myVERSION
+
+local backpackLayouts
+local searchBoxes
 
 local function enableGuildStoreSellFilters()
-    local tradingHouseLayout = backPackTradingHouseLayout.layoutData
+    local tradingHouseLayout = BACKPACK_TRADING_HOUSE_LAYOUT_FRAGMENT.layoutData
 
     if not tradingHouseLayout.hiddenFilters then
         tradingHouseLayout.hiddenFilters = {}
@@ -46,7 +30,7 @@ local function enableGuildStoreSellFilters()
         end
     end
 
-    local tradingHouseHiddenColumns = { statValue = true, age = true }
+    local tradingHouseHiddenColumns = {statValue = true, age = true}
     local zorgGetTabFilterInfo = PLAYER_INVENTORY.GetTabFilterInfo
 
     function PLAYER_INVENTORY:GetTabFilterInfo(inventoryType, tabControl)
@@ -57,89 +41,89 @@ local function enableGuildStoreSellFilters()
             return zorgGetTabFilterInfo(self, inventoryType, tabControl)
         end
     end
+    -- ZO_InventoryManager:SetTradingHouseModeEnabled has been removed in 3.2
+    -- from now on we have to listen to the scene state change and do the following:
+    --  1) saves/restores the current filter
+    --      - or would, if the filter wasn't reset in ApplyBackpackLayout
+    --      - this simply doesn't work
+    --  2) shows the search box and hides the filters tab, or vice versa
+    --      - we want to show or hide them according to add-on requirements
+    --        specified during start-up
+    local function SetTradingHouseModeEnabled(enabled)
+        libCIF._tradingHouseModeEnabled = enabled
+    end
+    --Trading house scene change
+    local function SceneStateChange(oldState, newState)
+        if newState == SCENE_SHOWING then
+            SetTradingHouseModeEnabled(true)
+        elseif newState == SCENE_HIDING then
+            SetTradingHouseModeEnabled(false)
+        end
+    end
+    TRADING_HOUSE_SCENE:RegisterCallback("StateChange", SceneStateChange)
 end
 
 --if the mouse is enabled, cycle its state to refresh the integrity of the control beneath it
 local function SafeUpdateList(object, ...)
     local isMouseVisible = SCENE_MANAGER:IsInUIMode()
-    if isMouseVisible then HideMouse() end
+    if isMouseVisible then
+        HideMouse()
+    end
     object:UpdateList(...)
-    if isMouseVisible then ShowMouse() end
+    if isMouseVisible then
+        ShowMouse()
+    end
 end
 
 local function fixSearchBoxBugs()
     -- http://www.esoui.com/forums/showthread.php?t=4551
     -- search box bug #1: stale searchData after swapping equipment
-    SHARED_INVENTORY:RegisterCallback("SlotUpdated",
+    SHARED_INVENTORY:RegisterCallback(
+        "SlotUpdated",
         function(bagId, slotIndex, slotData)
             if slotData and slotData.searchData then
                 slotData.searchData.cached = false
                 slotData.searchData.cache = nil
             end
-        end)
+        end
+    )
 
     -- guild bank search box bug #2: wrong inventory updated
-    guildBankSearchBoxOld:SetHandler("OnTextChanged",
+    ZO_GuildBankSearchBox:SetHandler(
+        "OnTextChanged",
         function(editBox)
             ZO_EditDefaultText_OnTextChanged(editBox)
             SafeUpdateList(PLAYER_INVENTORY, INVENTORY_GUILD_BANK)
-        end)
-
-    -- bank search box bug for deposit
-    INVENTORY_FRAGMENT:RegisterCallback("StateChange",
-        function(oldState, newState)
-            if libCIF._searchBoxesDisabled then return false end
-            if newState == SCENE_FRAGMENT_SHOWN then
-                zo_callLater(function()
-                    playerInvSearchBox:ClearAnchors()
-                    playerInvSearchBox:SetAnchor(BOTTOMRIGHT, nil, TOPRIGHT, -15, -55)
-                    playerInvSearchBox:SetHidden(false)
-                end, 1) --if not delayed by 1 ms the searchbar will be hidden
-            elseif newState == SCENE_FRAGMENT_HIDDEN then
-                playerInvSearchBox:SetHidden(true)
-            end
-        end)
+        end
+    )
 
     -- guild bank search box bug #3: wrong search box cleared
     local guildBankScene = SCENE_MANAGER:GetScene("guildBank")
-    guildBankScene:RegisterCallback("StateChange",
+    guildBankScene:RegisterCallback(
+        "StateChange",
         function(oldState, newState)
             if newState == SCENE_HIDDEN then
-                ZO_PlayerInventory_EndSearch(guildBankSearchBoxOld)
+                ZO_PlayerInventory_EndSearch(ZO_GuildBankSearchBox)
             end
-        end)
+        end
+    )
 end
-
 
 local function showSearchBoxes()
     -- new in 3.2: player inventory fragments set the search bar visible when the layout is applied
-    backPackDefaultLayout.layoutData.useSearchBar = true
-    backPackMenuBarLayout.layoutData.useSearchBar = true
-    backPackMailLayout.layoutData.useSearchBar = true
-    backPackPlayerTradeLayout.layoutData.useSearchBar = true
-    backPackStoreLayout.layoutData.useSearchBar = true
-    backPackFenceLayout.layoutData.useSearchBar = true
-    backPackLaunderLayout.layoutData.useSearchBar = true
+    for i = 1, #backpackLayouts do
+        backpackLayouts[i].layoutData.useSearchBar = true
+    end
 
-    -- re-anchoring is necessary because they overlap with sort headers
-    playerInvSearchBox:ClearAnchors()
-    playerInvSearchBox:SetAnchor(BOTTOMRIGHT, nil, TOPRIGHT, -15, -55)
-    playerInvSearchBox:SetHidden(false)
+    local width = ZO_PlayerInventorySearch:GetWidth()
+    for i = 1, #searchBoxes do
+        searchBoxes[i]:SetWidth(width)
+    end
 
-    bankSearchBox:ClearAnchors()
-    bankSearchBox:SetAnchor(BOTTOMRIGHT, nil, TOPRIGHT, -15, -55)
-    bankSearchBox:SetWidth(playerInvSearchBox:GetWidth())
-    bankSearchBox:SetHidden(false)
-
-    guildBankSearchBox:ClearAnchors()
-    guildBankSearchBox:SetAnchor(BOTTOMRIGHT, nil, TOPRIGHT, -15, -55)
-    guildBankSearchBox:SetWidth(playerInvSearchBox:GetWidth())
-    guildBankSearchBox:SetHidden(false)
-
-    craftbagSearchBox:ClearAnchors()
-    craftbagSearchBox:SetAnchor(BOTTOMRIGHT, nil, TOPRIGHT, -15, -55)
-    craftbagSearchBox:SetWidth(playerInvSearchBox:GetWidth())
-    craftbagSearchBox:SetHidden(false)
+    -- Also call ApplyBackpackLayout for those scenes to re-anchor searchBoxes as needed.
+    SCENE_MANAGER:GetScene("bank"):AddFragment(BACKPACK_DEFAULT_LAYOUT_FRAGMENT)
+    SCENE_MANAGER:GetScene("guildBank"):AddFragment(BACKPACK_DEFAULT_LAYOUT_FRAGMENT)
+    SCENE_MANAGER:GetScene("houseBank"):AddFragment(BACKPACK_DEFAULT_LAYOUT_FRAGMENT)
 end
 
 local function enhanceSearchBoxes()
@@ -149,35 +133,14 @@ local function enhanceSearchBoxes()
             ZO_PlayerInventory_EndSearch(control)
         end
     end
-    ZO_PreHookHandler(playerInvSearchBoxOld,    "OnMouseUp", onMouseRightClickClearSearchBox)
-    ZO_PreHookHandler(craftbagSearchBoxOld,     "OnMouseUp", onMouseRightClickClearSearchBox)
-    ZO_PreHookHandler(bankSearchBoxOld,         "OnMouseUp", onMouseRightClickClearSearchBox)
-    ZO_PreHookHandler(guildBankSearchBoxOld,    "OnMouseUp", onMouseRightClickClearSearchBox)
+    for i = 1, #searchBoxes do
+        ZO_PreHookHandler(searchBoxes[i]:GetNamedChild("Box"), "OnMouseUp", onMouseRightClickClearSearchBox)
+    end
 end
 
 local function onPlayerActivated(eventCode)
     EVENT_MANAGER:UnregisterForEvent(myNAME, eventCode)
 
-    --Controls for the search box anchors
-    playerInvSearchBox              = ZO_PlayerInventorySearch
-    playerInvSearchBoxOld           = ZO_PlayerInventorySearchBox
-    craftbagSearchBox               = ZO_CraftBagSearch
-    craftbagSearchBoxOld            = ZO_CraftBagSearchBox
-    bankSearchBox                   = ZO_PlayerBankSearch
-    bankSearchBoxOld                = ZO_PlayerBankSearchBox
-    guildBankSearchBox              = ZO_GuildBankSearch
-    guildBankSearchBoxOld           = ZO_GuildBankSearchBox
-    --Backpack layout of fragments
-    backPackDefaultLayout           = BACKPACK_DEFAULT_LAYOUT_FRAGMENT
-    backPackMenuBarLayout           = BACKPACK_MENU_BAR_LAYOUT_FRAGMENT
-    backPackBankLayout              = BACKPACK_BANK_LAYOUT_FRAGMENT
-    backPackGuildBankLayout         = BACKPACK_GUILD_BANK_LAYOUT_FRAGMENT
-    backPackTradingHouseLayout      = BACKPACK_TRADING_HOUSE_LAYOUT_FRAGMENT
-    backPackMailLayout              = BACKPACK_MAIL_LAYOUT_FRAGMENT
-    backPackPlayerTradeLayout       = BACKPACK_PLAYER_TRADE_LAYOUT_FRAGMENT
-    backPackStoreLayout             = BACKPACK_STORE_LAYOUT_FRAGMENT
-    backPackFenceLayout             = BACKPACK_FENCE_LAYOUT_FRAGMENT
-    backPackLaunderLayout           = BACKPACK_LAUNDER_LAYOUT_FRAGMENT
     --Fix the errors in the search boxes
     fixSearchBoxBugs()
     --Enhance search boxes with right click
@@ -199,77 +162,39 @@ local function onPlayerActivated(eventCode)
             layoutData.sortByOffsetY = layoutData.sortByOffsetY + shiftY
             layoutData.backpackOffsetY = layoutData.backpackOffsetY + shiftY
         end
-        doShift(backPackMenuBarLayout.layoutData)
-        doShift(backPackBankLayout.layoutData)
-        doShift(backPackTradingHouseLayout.layoutData)
-        doShift(backPackMailLayout.layoutData)
-        doShift(backPackPlayerTradeLayout.layoutData)
-        doShift(backPackStoreLayout.layoutData)
-        doShift(backPackFenceLayout.layoutData)
-        doShift(backPackLaunderLayout.layoutData)
-        doShift(backPackGuildBankLayout.layoutData)
-    end
-
-    -- ZO_InventoryManager:SetTradingHouseModeEnabled has been removed in 3.2
-    -- from now on we have to listen to the scene state change and do the following:
-    --  1) saves/restores the current filter
-    --      - or would, if the filter wasn't reset in ApplyBackpackLayout
-    --      - this simply doesn't work
-    --  2) shows the search box and hides the filters tab, or vice versa
-    --      - we want to show or hide them according to add-on requirements
-    --        specified during start-up
-    local savedPlayerInventorySearchBoxAnchor = {false}
-    local savedCraftBagSearchBoxAnchor = {false}
-
-    local layoutData = backPackTradingHouseLayout.layoutData
-    local function SetTradingHouseModeEnabled(enabled)
-        libCIF._tradingHouseModeEnabled = enabled
-
-        if enabled then
-            layoutData.useSearchBar = true
-            layoutData.hideTabBar = false
-            craftbagSearchBox:SetHidden(false)
-
-            -- move search box if custom sell filters are enabled (AwesomeGuildStore)
-            if libCIF._guildStoreSellFiltersDisabled then
-                if(not savedPlayerInventorySearchBoxAnchor[1]) then
-                    savedPlayerInventorySearchBoxAnchor = {playerInvSearchBox:GetAnchor(0)}
-                    playerInvSearchBox:ClearAnchors()
-                    playerInvSearchBox:SetAnchor(TOPLEFT, ZO_SharedRightPanelBackground, TOPLEFT, 16, 11)
-                end
-                if(not savedCraftBagSearchBoxAnchor[1]) then
-                    savedCraftBagSearchBoxAnchor = {craftbagSearchBox:GetAnchor(0)}
-                    craftbagSearchBox:ClearAnchors()
-                    craftbagSearchBox:SetAnchor(BOTTOMLEFT, nil, TOPLEFT, 36, -8)
-                end
-            end
-        else
-            layoutData.useSearchBar = libCIF._searchBoxesDisabled
-            layoutData.hideTabBar = libCIF._guildStoreSellFiltersDisabled
-            craftbagSearchBox:SetHidden(libCIF._searchBoxesDisabled)
-
-            -- restore original search box position (FilterIt)
-            if savedPlayerInventorySearchBoxAnchor[1] then
-                playerInvSearchBox:ClearAnchors()
-                playerInvSearchBox:SetAnchor(unpack(savedPlayerInventorySearchBoxAnchor, 2))
-                savedPlayerInventorySearchBoxAnchor[1] = false
-            end
-            if savedCraftBagSearchBoxAnchor[1] then
-                craftbagSearchBox:ClearAnchors()
-                craftbagSearchBox:SetAnchor(unpack(savedCraftBagSearchBoxAnchor, 2))
-                savedCraftBagSearchBoxAnchor[1] = false
-            end
+        for i = 1, #backpackLayouts do
+            doShift(backpackLayouts[i].layoutData)
         end
     end
-    --Trading house scene change
-    local function SceneStateChange(oldState, newState)
-        if newState == SCENE_SHOWING then
-            SetTradingHouseModeEnabled(true)
-        elseif newState == SCENE_HIDING then
-            SetTradingHouseModeEnabled(false)
+
+    local orgApplyBackpackLayout = PLAYER_INVENTORY.ApplyBackpackLayout
+    local function applySearchBox(control, layoutData)
+        if layoutData.searchBoxAnchor then
+            layoutData.searchBoxAnchor:Set(control)
+        end
+        control:SetHidden(not layoutData.useSearchBar)
+    end
+    local function applySearchBoxes(manager, layoutData)
+        local previousLayout = manager.appliedLayout
+        if previousLayout == layoutData and not layoutData.alwaysReapplyLayout then
+            return
+        end
+        for i = 1, #searchBoxes do
+            applySearchBox(searchBoxes[i], layoutData)
         end
     end
-    TRADING_HOUSE_SCENE:RegisterCallback("StateChange",  SceneStateChange)
+    function PLAYER_INVENTORY.ApplyBackpackLayout(...)
+        -- force context switch for mouse over control. The KEYBIND_STRIP needs it.
+        local isMouseVisible = SCENE_MANAGER:IsInUIMode()
+        if isMouseVisible then
+            HideMouse(false)
+        end
+        applySearchBoxes(...)
+        if isMouseVisible then
+            ShowMouse(false)
+        end
+        return orgApplyBackpackLayout(...)
+    end
 end
 
 -- shift backpack sort headers and item list down (shiftY > 0) or up (shiftY < 0)
@@ -289,6 +214,68 @@ end
 function libCIF:disableSearchBoxes()
     libCIF._searchBoxesDisabled = true
 end
+
+local function applyAnchorToLayoutFragment(layoutFragment, anchor)
+    assert(layoutFragment and layoutFragment.layoutData, "Invalid layout fragment.")
+    layoutFragment.layoutData.searchBoxAnchor = anchor
+    if PLAYER_INVENTORY.appliedLayout == layoutFragment.layoutData then
+        PLAYER_INVENTORY.appliedLayout = nil
+    end
+end
+
+-- apply the given anchor to the given backpack layout fragments or all.
+-- add-ons should only call this from their EVENT_ADD_ON_LOADED handler
+-- Additional expert hint: anchor can be a ZO_Anchor or a table having a function :Set(control).
+-- You are able to implement your own complex anchoring functions, using e.g. "mode" information from crafting tables
+function libCIF:setSearchBoxAnchor(anchor, ...)
+    assert(type(anchor) == "table" and anchor.Set, "Invalid anchor. Anchor must implement :Set(control)")
+    local count = select("#", ...)
+    if count == 0 then
+        for i = 1, #backpackLayouts do
+            backpackLayouts[i].layoutData.searchBoxAnchor = anchor
+        end
+        PLAYER_INVENTORY.appliedLayout = nil
+    else
+        for i = 1, count do
+            applyAnchorToLayoutFragment(select(i, ...), anchor)
+        end
+    end
+end
+
+local function OnAddonLoaded(eventType, addonName)
+    if addonName ~= myNAME then
+        return
+    end
+    EVENT_MANAGER:UnregisterForEvent(myNAME, EVENT_ADD_ON_LOADED)
+
+    --Backpack layout of fragments
+    backpackLayouts = {
+        BACKPACK_DEFAULT_LAYOUT_FRAGMENT,
+        BACKPACK_MENU_BAR_LAYOUT_FRAGMENT,
+        BACKPACK_BANK_LAYOUT_FRAGMENT,
+        BACKPACK_GUILD_BANK_LAYOUT_FRAGMENT,
+        BACKPACK_TRADING_HOUSE_LAYOUT_FRAGMENT,
+        BACKPACK_MAIL_LAYOUT_FRAGMENT,
+        BACKPACK_PLAYER_TRADE_LAYOUT_FRAGMENT,
+        BACKPACK_STORE_LAYOUT_FRAGMENT,
+        BACKPACK_FENCE_LAYOUT_FRAGMENT,
+        BACKPACK_LAUNDER_LAYOUT_FRAGMENT
+    }
+    searchBoxes = {
+        ZO_PlayerInventorySearch,
+        ZO_CraftBagSearch,
+        ZO_PlayerBankSearch,
+        ZO_GuildBankSearch,
+        ZO_HouseBankSearch
+    }
+
+    local anchor = ZO_Anchor:New(BOTTOMRIGHT, nil, TOPRIGHT, -15, -55)
+    -- re-anchoring is necessary because they overlap with sort headers
+    libCIF:setSearchBoxAnchor(anchor)
+end
+
+EVENT_MANAGER:UnregisterForEvent(myNAME, EVENT_ADD_ON_LOADED)
+EVENT_MANAGER:RegisterForEvent(myNAME, EVENT_ADD_ON_LOADED, OnAddonLoaded)
 
 EVENT_MANAGER:UnregisterForEvent(myNAME, EVENT_PLAYER_ACTIVATED)
 EVENT_MANAGER:RegisterForEvent(myNAME, EVENT_PLAYER_ACTIVATED, onPlayerActivated)
